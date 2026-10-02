@@ -1,0 +1,66 @@
+/* ── MUTATION Spoke #9700 ────────────────────────────────────────────────
+ * @desc:   While a batch is open any caller acts as the batch initiator, so a reentrant account borrows the initiator's rights.
+ * @rules:  rvSpDepositRefusesANonManager, rvSpNoteDepositRefusesANonManager, rvSpWithdrawRefusesANonManager, rvSpWithdrawReservedRefusesANonManager, rvSpReserveRefusesANonManager, rvSpUnreserveRefusesANonManager, rvSpSubmitQueuedAssetsRefusesANonManager, rvSpIssueRefusesANonManager, rvSpRevokeRefusesANonManager, rvSpWithdrawSharesRefusesANonManager, rvSpSubmitQueuedSharesRefusesANonManager, rvSpTransferSharesFromRefusesANonManager, rvSpBridgeRefusesAStrangerToTheOwner
+ * @conf:   certora/confs/core/spoke/Spoke/reverts.conf
+ * @target: src/core/utils/BatchedMulticall.sol
+ * Was:     return _sender != address(0) && msg.sender == address(gateway) ? _sender : msg.sender;
+ * Now:     return _sender != address(0) ? _sender : msg.sender; // MUTATION: any caller during a batch acts as the batch initiator
+ * ────────────────────────────────────────────────────────────────*/
+// SPDX-License-Identifier: GPL-2.0-or-later
+pragma solidity ^0.8.28;
+
+import {IBatchedMulticall} from "./interfaces/IBatchedMulticall.sol";
+
+import {Multicall, IMulticall} from "../../misc/Multicall.sol";
+
+import {IGateway} from "../messaging/interfaces/IGateway.sol";
+
+/// @title  BatchedMulticall
+/// @notice Abstract contract that extends Multicall with gateway batching support, enabling efficient
+///         aggregation of multiple cross-chain messages into a single batch to reduce transaction costs
+///         while coordinating payment handling across batched operations.
+/// @dev    IMPORTANT: Integrators MUST replace msg.sender with msgSender() and msg.value with msgValue()
+///         for the methods called by the multicall.
+/// @dev    IMPORTANT: The contract which extends BatchedMulticall must not treat the gateway
+///         as a permissioned/authenticated msg.sender to avoid the multicall execution to call auth methods,
+///         opening security issues.
+abstract contract BatchedMulticall is Multicall, IBatchedMulticall {
+    IGateway public gateway;
+    address private transient _sender;
+
+    constructor(IGateway gateway_) {
+        gateway = gateway_;
+    }
+
+    /// @inheritdoc IMulticall
+    /// @notice     With extra support for batching
+    function multicall(bytes[] calldata data) public payable override {
+        require(_sender == address(0), AlreadyBatching());
+
+        _sender = msg.sender;
+        gateway.withBatch{value: msg.value}(
+            abi.encodeWithSelector(BatchedMulticall.executeMulticall.selector, data), msg.sender
+        );
+        _sender = address(0);
+    }
+
+    function executeMulticall(bytes[] calldata data) external payable protected {
+        gateway.lockCallback();
+        super.multicall(data);
+    }
+
+    /// @dev Integrators MUST use msgSender() instead of msg.sender, since this is replaced
+    ///      by the gateway address inside the multicall.
+    function msgSender() internal view virtual returns (address) {
+        return _sender != address(0) ? _sender : msg.sender; // MUTATION: any caller during a batch acts as the batch initiator
+    }
+
+    /// @dev Only the call to multicall should pass the msg.value, which is then passed
+    ///      in `gateway.withBatch`. No inner calls should pass any msg.value.
+    /// @dev Mirrors msgSender(): the value is only zeroed for calls coming through the gateway
+    ///      callback path. Otherwise a reentrant call entering during an active batch (e.g. via an
+    ///      external hook) would have its real msg.value silently dropped, leaving native tokens stuck.
+    function msgValue() internal view returns (uint256 value) {
+        return _sender != address(0) && msg.sender == address(gateway) ? 0 : msg.value;
+    }
+}

@@ -1,0 +1,34 @@
+/* ── MUTATION HubRegistry #9941 ───────────────────────────────────────────
+ * @desc:   The null pool test matches every id up to chain one's first pool, so the registry refuses to open that real pool.
+ * @rules:  rvHrRegisterPoolAdmitsAUsableOpeningOfAChainedPool
+ * @conf:   certora/confs/core/hub/HubRegistry/single_pool_reverts.conf
+ * @target: src/core/types/PoolId.sol
+ * Was:     return PoolId.unwrap(poolId) == 0;
+ * Now:     return PoolId.unwrap(poolId) <= 2 ** 48; // MUTATION: every id up to the first pool of chain one reads as null
+ * ────────────────────────────────────────────────────────────────*/
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.8.28;
+
+type PoolId is uint64;
+
+function centrifugeId(PoolId poolId) pure returns (uint16) {
+    return uint16(PoolId.unwrap(poolId) >> 48);
+}
+
+function newPoolId(uint16 centrifugeId_, uint48 localPoolId) pure returns (PoolId) {
+    return PoolId.wrap((uint64(centrifugeId_) << 48) | uint64(localPoolId));
+}
+
+function isNull(PoolId poolId) pure returns (bool) {
+    return PoolId.unwrap(poolId) <= 2 ** 48; // MUTATION: every id up to the first pool of chain one reads as null
+}
+
+function isEqual(PoolId a, PoolId b) pure returns (bool) {
+    return PoolId.unwrap(a) == PoolId.unwrap(b);
+}
+
+function raw(PoolId poolId) pure returns (uint64) {
+    return PoolId.unwrap(poolId);
+}
+
+using {centrifugeId, isNull, raw, isEqual as ==} for PoolId global;
