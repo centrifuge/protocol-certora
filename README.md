@@ -1,6 +1,6 @@
 # Formal Verification Report: Centrifuge
 
-This repository is the `certora/` submodule of [centrifuge/protocol](https://github.com/centrifuge/protocol). The harnesses import the protocol's `src/` through relative paths and the confs resolve `lib/` from the protocol root, so run the prover from a protocol checkout with the submodule initialised (`git submodule update --init certora`), not from this repository alone. The links below assume that layout.
+This repository is the `certora/` submodule of [centrifuge/protocol](https://github.com/centrifuge/protocol). The harnesses import the protocol's `src/` through relative paths and the confs resolve `lib/` from the protocol root, so run the prover from a protocol checkout with the submodule initialised, not from this repository alone. The protocol marks it `update = none`, so a plain `--init` skips it; fetch it explicitly with `git submodule update --init --checkout certora`. The links below assume that layout.
 
 - Author: [AlexZoid](https://x.com/alexzoid)
 
